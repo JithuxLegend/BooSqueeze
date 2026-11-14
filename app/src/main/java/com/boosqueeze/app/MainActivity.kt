@@ -236,6 +236,8 @@ fun BooSqueezeApp() {
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val target = targetBitrate(inf, quality, codec)
+        val baseName = inf.name.substringBeforeLast('.', inf.name)
+val outName = baseName + ".mp4"
         val outFile = File(context.cacheDir, "boo_" + System.currentTimeMillis() + ".mp4")
 
         val encoderFactory = DefaultEncoderFactory.Builder(context)
@@ -258,8 +260,12 @@ fun BooSqueezeApp() {
                         try {
                             where = saveToGallery(
                                 context, outFile,
-                                "BooSqueeze_" + System.currentTimeMillis() + ".mp4"
-                            )
+                                outName
+                                )
+                                
+                                    
+    
+                            
                         } catch (e: Exception) {
                             err = "Could not save: " + e.message
                         }
