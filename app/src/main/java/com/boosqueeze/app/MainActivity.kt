@@ -17,7 +17,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -41,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -68,10 +69,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class Quality(val label: String, val hint: String, val factor: Float) {
-    HIGH("High", "Same look", 0.6f),
-    BALANCED("Balanced", "Smaller", 0.4f),
-    SMALL("Small", "Smallest", 0.25f)
+enum class Codec(val label: String, val hint: String, val mime: String) {
+    FAST("⚡ Fast", "H.264 · quickest", MimeTypes.VIDEO_H264),
+    SMALL("📦 Smaller", "H.265 · slower", MimeTypes.VIDEO_H265)
+}
+
+enum class Quality(val label: String, val hint: String, val fastFactor: Float, val smallFactor: Float) {
+    HIGH("High", "Same look", 0.70f, 0.45f),
+    BALANCED("Balanced", "Smaller", 0.50f, 0.32f),
+    SMALL("Small", "Smallest", 0.33f, 0.22f)
 }
 
 data class VideoInfo(val name: String, val sizeBytes: Long, val bitrate: Int, val durationMs: Long)
@@ -109,6 +115,22 @@ fun fmt(bytes: Long): String {
     else String.format(Locale.US, "%.1f MB", mb)
 }
 
+fun fmtTime(sec: Long): String {
+    val s = if (sec < 0) 0 else sec
+    return if (s >= 60) (s / 60).toString() + "m " + (s % 60) + "s" else s.toString() + "s"
+}
+
+fun targetBitrate(inf: VideoInfo, q: Quality, c: Codec): Int {
+    val src = if (inf.bitrate > 0) inf.bitrate else 8_000_000
+    val f = if (c == Codec.FAST) q.fastFactor else q.smallFactor
+    return (src * f).toInt().coerceAtLeast(500_000)
+}
+
+fun estimateBytes(inf: VideoInfo, q: Quality, c: Codec): Long {
+    val dur = inf.durationMs / 1000.0
+    return (targetBitrate(inf, q, c) / 8.0 * dur + 16000.0 * dur).toLong()
+}
+
 fun saveToGallery(context: Context, file: File, name: String): String {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         val values = ContentValues().apply {
@@ -134,6 +156,32 @@ fun saveToGallery(context: Context, file: File, name: String): String {
     }
 }
 
+@Composable
+fun SectionTitle(text: String) {
+    Text(
+        text, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp)
+    )
+}
+
+@Composable
+fun Chip(
+    title: String, sub: String, selected: Boolean, enabled: Boolean,
+    modifier: Modifier, onClick: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) Color(0xFF7C6CFF) else Color(0xFF2A2266))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(vertical = 14.dp, horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text(sub, color = if (selected) Color.White else Color(0xFFB9B2F5), fontSize = 12.sp)
+    }
+}
+
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun BooSqueezeApp() {
@@ -143,9 +191,14 @@ fun BooSqueezeApp() {
     var uri by remember { mutableStateOf<Uri?>(null) }
     var info by remember { mutableStateOf<VideoInfo?>(null) }
     var quality by remember { mutableStateOf(Quality.HIGH) }
+    var codec by remember { mutableStateOf(Codec.FAST) }
     var state by remember { mutableStateOf("idle") }
     var progress by remember { mutableStateOf(0f) }
-    var message by remember { mutableStateOf("") }
+    var elapsed by remember { mutableStateOf(0L) }
+    var errorMsg by remember { mutableStateOf("") }
+    var outBytes by remember { mutableStateOf(0L) }
+    var tookSecs by remember { mutableStateOf(0L) }
+    var savedWhere by remember { mutableStateOf("") }
     var transformer by remember { mutableStateOf<Transformer?>(null) }
     var startTime by remember { mutableStateOf(0L) }
 
@@ -154,7 +207,7 @@ fun BooSqueezeApp() {
             uri = picked
             info = readInfo(context, picked)
             state = "idle"
-            message = ""
+            errorMsg = ""
         }
     }
 
@@ -167,6 +220,7 @@ fun BooSqueezeApp() {
                     progress = holder.progress / 100f
                 }
             }
+            elapsed = (System.currentTimeMillis() - startTime) / 1000
             delay(300)
         }
     }
@@ -176,12 +230,12 @@ fun BooSqueezeApp() {
         val inf = info ?: return
         state = "working"
         progress = 0f
-        message = ""
+        elapsed = 0L
+        errorMsg = ""
         startTime = System.currentTimeMillis()
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        val srcBitrate = if (inf.bitrate > 0) inf.bitrate else 8_000_000
-        val target = (srcBitrate * quality.factor).toInt().coerceAtLeast(500_000)
+        val target = targetBitrate(inf, quality, codec)
         val outFile = File(context.cacheDir, "boo_" + System.currentTimeMillis() + ".mp4")
 
         val encoderFactory = DefaultEncoderFactory.Builder(context)
@@ -191,32 +245,32 @@ fun BooSqueezeApp() {
             .build()
 
         val t = Transformer.Builder(context)
-            .setVideoMimeType(MimeTypes.VIDEO_H265)
+            .setVideoMimeType(codec.mime)
             .setEncoderFactory(encoderFactory)
             .addListener(object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                     progress = 1f
                     state = "saving"
                     Thread {
-                        val msg = try {
-                            val outSize = outFile.length()
-                            val where = saveToGallery(
+                        var err = ""
+                        var where = ""
+                        val size = outFile.length()
+                        try {
+                            where = saveToGallery(
                                 context, outFile,
                                 "BooSqueeze_" + System.currentTimeMillis() + ".mp4"
                             )
-                            val secs = (System.currentTimeMillis() - startTime) / 1000
-                            val saved = if (inf.sizeBytes > 0)
-                                100 - (outSize * 100 / inf.sizeBytes) else 0
-                            "Done in " + secs + "s\n" +
-                                fmt(inf.sizeBytes) + "  →  " + fmt(outSize) +
-                                "  (" + saved + "% smaller)\nSaved in: " + where
                         } catch (e: Exception) {
-                            "Could not save: " + e.message
+                            err = "Could not save: " + e.message
                         }
                         outFile.delete()
+                        val secs = (System.currentTimeMillis() - startTime) / 1000
                         activity.runOnUiThread {
-                            message = msg
-                            state = "done"
+                            outBytes = size
+                            tookSecs = secs
+                            savedWhere = where
+                            errorMsg = err
+                            state = if (err.isEmpty()) "done" else "error"
                             activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                         }
                     }.start()
@@ -228,7 +282,7 @@ fun BooSqueezeApp() {
                     exportException: ExportException
                 ) {
                     outFile.delete()
-                    message = "Something went wrong: " + exportException.message
+                    errorMsg = "Something went wrong: " + exportException.message
                     state = "error"
                     activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
@@ -240,73 +294,93 @@ fun BooSqueezeApp() {
     }
 
     val busy = state == "working" || state == "saving"
-    val bg = Color(0xFF1B1540)
     val card = Color(0xFF2A2266)
     val soft = Color(0xFFB9B2F5)
+    val mint = Color(0xFF7ED957)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(bg)
+            .background(Brush.verticalGradient(listOf(Color(0xFF2B1E8C), Color(0xFF1B1540))))
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(28.dp))
-        Text("👻 Boo Squeeze", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-        Text("Shrink videos. Keep the quality.", color = soft, fontSize = 14.sp)
         Spacer(Modifier.height(24.dp))
+        Text("👻", fontSize = 56.sp)
+        Text("Boo Squeeze", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Text("Shrink videos. Keep the quality.", color = soft, fontSize = 14.sp)
+        Spacer(Modifier.height(22.dp))
 
         Button(
             onClick = { picker.launch("video/*") },
             enabled = !busy,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) { Text("🎬  Choose a video", fontSize = 18.sp) }
+            modifier = Modifier.fillMaxWidth().height(58.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C6CFF))
+        ) { Text("🎬  Choose a video", fontSize = 18.sp, color = Color.White) }
 
         info?.let { i ->
             Spacer(Modifier.height(16.dp))
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(card).padding(16.dp)
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(card).padding(16.dp)
             ) {
                 Text(i.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Size: " + fmt(i.sizeBytes) + "   •   " + (i.durationMs / 1000) + " sec",
+                    "Original: " + fmt(i.sizeBytes) + "   •   " + fmtTime(i.durationMs / 1000),
                     color = soft, fontSize = 14.sp
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
-            Text("Quality", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(8.dp))
+            SectionTitle("Speed")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Quality.values().forEach { q ->
-                    val selected = q == quality
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (selected) Color(0xFF6D5DF6) else card)
-                            .clickable(enabled = !busy) { quality = q }
-                            .padding(vertical = 14.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(q.label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text(q.hint, color = if (selected) Color.White else soft, fontSize = 12.sp)
-                    }
+                Codec.values().forEach { c ->
+                    Chip(c.label, c.hint, c == codec, !busy, Modifier.weight(1f)) { codec = c }
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
+            SectionTitle("Quality")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Quality.values().forEach { q ->
+                    Chip(q.label, q.hint, q == quality, !busy, Modifier.weight(1f)) { quality = q }
+                }
+            }
+
+            val est = estimateBytes(i, quality, codec)
+            Spacer(Modifier.height(14.dp))
+            Text(
+                if (i.sizeBytes > 0 && est >= i.sizeBytes)
+                    "This video is already small, try Smaller or a lower quality."
+                else
+                    "Estimated result: about " + fmt(est),
+                color = mint, fontSize = 14.sp, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(18.dp))
             if (state == "working") {
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(card).padding(16.dp)
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(card).padding(18.dp)
                 ) {
-                    Text("Squeezing… " + (progress * 100).toInt() + "%", color = Color.White, fontSize = 16.sp)
+                    Text(
+                        "Squeezing… " + (progress * 100).toInt() + "%",
+                        color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                        color = mint,
+                        trackColor = Color(0xFF4A3FA8)
+                    )
                     Spacer(Modifier.height(10.dp))
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                    val eta = if (progress > 0.05f) (elapsed / progress - elapsed).toLong() else -1L
+                    Text(
+                        "Time: " + fmtTime(elapsed) +
+                            (if (eta >= 0) "   •   About " + fmtTime(eta) + " left" else ""),
+                        color = soft, fontSize = 14.sp
+                    )
                 }
                 Spacer(Modifier.height(12.dp))
                 OutlinedButton(onClick = {
@@ -319,18 +393,42 @@ fun BooSqueezeApp() {
             } else {
                 Button(
                     onClick = { startCompress() },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(16.dp)
-                ) { Text("🧃  Squeeze it!", fontSize = 18.sp) }
+                    modifier = Modifier.fillMaxWidth().height(60.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = mint)
+                ) { Text("🧃  Squeeze it!", fontSize = 19.sp, color = Color(0xFF1B1540), fontWeight = FontWeight.Bold) }
+            }
+
+            if (state == "done") {
+                val saved = if (i.sizeBytes > 0) (100 - (outBytes * 100 / i.sizeBytes)) else 0
+                val speed = if (tookSecs > 0) (i.durationMs / 1000.0) / tookSecs else 0.0
+                Spacer(Modifier.height(18.dp))
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(card).padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("✅ Done!", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(saved.toString() + "% smaller", color = mint, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(fmt(i.sizeBytes) + "  →  " + fmt(outBytes), color = Color.White, fontSize = 16.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Took " + fmtTime(tookSecs) + "  •  " + String.format(Locale.US, "%.1f", speed) + "x playback speed",
+                        color = soft, fontSize = 14.sp
+                    )
+                    Text("Saved in: " + savedWhere, color = soft, fontSize = 13.sp)
+                }
             }
         }
 
-        if (message.isNotEmpty()) {
-            Spacer(Modifier.height(20.dp))
+        if (errorMsg.isNotEmpty()) {
+            Spacer(Modifier.height(18.dp))
             Text(
-                message, color = Color.White, fontSize = 15.sp, textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(card).padding(16.dp)
+                errorMsg, color = Color(0xFFFFB4B4), fontSize = 14.sp, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(card).padding(16.dp)
             )
         }
+        Spacer(Modifier.height(30.dp))
     }
 }
