@@ -1,6 +1,7 @@
 package com.boosqueeze.app
 
 import android.net.Uri
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -347,6 +348,21 @@ fun BooSqueezeApp() {
                         color = soft, fontSize = 14.sp
                     )
                     Text("Saved in: " + savedWhere, color = soft, fontSize = 13.sp)
+                                        Spacer(Modifier.height(14.dp))
+                    Button(
+                        onClick = {
+                            val u = lastSavedUri
+                            if (u != null) {
+                                val send = Intent(Intent.ACTION_SEND)
+                                send.type = "video/mp4"
+                                send.putExtra(Intent.EXTRA_STREAM, u)
+                                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                context.startActivity(Intent.createChooser(send, "Share video"))
+                            }
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C6CFF))
+                    ) { Text("📤  Share", color = Color.White, fontSize = 16.sp) }
                 }
             }
         }
