@@ -8,18 +8,28 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +77,7 @@ data class VideoInfo(
 )
 
 data class Plan(val bitrate: Int, val mime: String, val scaleHeight: Int)
+
 var lastSavedUri: Uri? = null
 
 fun readInfo(context: Context, uri: Uri): VideoInfo {
@@ -125,7 +136,7 @@ fun planFor(inf: VideoInfo, p: Preset, q: Quality, c: Codec): Plan {
     }
     val dur = maxOf(1.0, inf.durationMs / 1000.0)
     var br = if (p.fitMb > 0) {
-        val total = p.fitMb * 1024.0 * 1024.0 * 8.0 * 0.92
+        val total = p.fitMb * 1024.0 * 1024.0 * 8.0 * 0.78
         ((total - 128_000.0 * dur) / dur).toInt().coerceIn(300_000, 6_000_000)
     } else p.bitrate
     if (inf.bitrate > 0) br = minOf(br, (inf.bitrate * 0.9).toInt())
@@ -143,7 +154,7 @@ fun planFor(inf: VideoInfo, p: Preset, q: Quality, c: Codec): Plan {
 
 fun estimateBytes(inf: VideoInfo, plan: Plan): Long {
     val dur = inf.durationMs / 1000.0
-        return (plan.bitrate / 8.0 * dur * 1.17 + 16000.0 * dur).toLong()
+    return (plan.bitrate / 8.0 * dur * 1.17 + 16000.0 * dur).toLong()
 }
 
 fun saveToGallery(context: Context, file: File, name: String): String {
@@ -163,7 +174,7 @@ fun saveToGallery(context: Context, file: File, name: String): String {
         values.clear()
         values.put(MediaStore.Video.Media.IS_PENDING, 0)
         resolver.update(uri, values, null, null)
-                lastSavedUri = uri
+        lastSavedUri = uri
         "Movies/BooSqueeze"
     } else {
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: context.filesDir
@@ -222,5 +233,57 @@ fun PresetCard(
         if (estText.isNotEmpty()) {
             Text(estText, color = Color(0xFF7ED957), fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
+    }
+}
+
+fun getTotalSaved(context: Context): Long =
+    context.getSharedPreferences("boo_stats", Context.MODE_PRIVATE).getLong("saved", 0L)
+
+fun getTotalCount(context: Context): Int =
+    context.getSharedPreferences("boo_stats", Context.MODE_PRIVATE).getInt("count", 0)
+
+fun addStats(context: Context, savedBytes: Long) {
+    val p = context.getSharedPreferences("boo_stats", Context.MODE_PRIVATE)
+    p.edit()
+        .putLong("saved", p.getLong("saved", 0L) + maxOf(0L, savedBytes))
+        .putInt("count", p.getInt("count", 0) + 1)
+        .apply()
+}
+
+@Composable
+fun GhostProgress(progress: Float, modifier: Modifier = Modifier) {
+    val p = progress.coerceIn(0f, 1f)
+    val bobAnim = rememberInfiniteTransition(label = "ghostBob")
+    val bob by bobAnim.animateFloat(
+        initialValue = -3f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(tween(450), RepeatMode.Reverse),
+        label = "bob"
+    )
+    BoxWithConstraints(modifier.fillMaxWidth().height(36.dp)) {
+        val ghostSize = 30.dp
+        val usable = maxWidth - ghostSize
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFF4A3FA8))
+        )
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .width(usable * p + ghostSize / 2)
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFF7ED957))
+        )
+        Text(
+            "👻", fontSize = 24.sp,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = usable * p, y = bob.dp)
+        )
     }
 }
