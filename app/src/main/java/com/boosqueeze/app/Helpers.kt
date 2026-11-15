@@ -67,6 +67,7 @@ data class VideoInfo(
 )
 
 data class Plan(val bitrate: Int, val mime: String, val scaleHeight: Int)
+var lastSavedUri: Uri? = null
 
 fun readInfo(context: Context, uri: Uri): VideoInfo {
     var name = "video"
@@ -142,7 +143,7 @@ fun planFor(inf: VideoInfo, p: Preset, q: Quality, c: Codec): Plan {
 
 fun estimateBytes(inf: VideoInfo, plan: Plan): Long {
     val dur = inf.durationMs / 1000.0
-    return (plan.bitrate / 8.0 * dur + 16000.0 * dur).toLong()
+        return (plan.bitrate / 8.0 * dur * 1.17 + 16000.0 * dur).toLong()
 }
 
 fun saveToGallery(context: Context, file: File, name: String): String {
@@ -162,6 +163,7 @@ fun saveToGallery(context: Context, file: File, name: String): String {
         values.clear()
         values.put(MediaStore.Video.Media.IS_PENDING, 0)
         resolver.update(uri, values, null, null)
+                lastSavedUri = uri
         "Movies/BooSqueeze"
     } else {
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: context.filesDir
