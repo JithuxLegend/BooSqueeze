@@ -253,13 +253,7 @@ fun addStats(context: Context, savedBytes: Long) {
 @Composable
 fun GhostProgress(progress: Float, modifier: Modifier = Modifier) {
     val p = progress.coerceIn(0f, 1f)
-    val bobAnim = rememberInfiniteTransition(label = "ghostBob")
-    val bob by bobAnim.animateFloat(
-        initialValue = -3f,
-        targetValue = 3f,
-        animationSpec = infiniteRepeatable(tween(450), RepeatMode.Reverse),
-        label = "bob"
-    )
+    
     BoxWithConstraints(modifier.fillMaxWidth().height(36.dp)) {
         val ghostSize = 30.dp
         val usable = maxWidth - ghostSize
@@ -283,7 +277,7 @@ fun GhostProgress(progress: Float, modifier: Modifier = Modifier) {
             "👻", fontSize = 24.sp,
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .offset(x = usable * p, y = bob.dp)
+                .offset(x = usable * p)            
         )
     }
 }
