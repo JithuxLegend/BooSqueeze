@@ -10,14 +10,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
-data class Fact(val topic: String, val text: String)
+data class Fact(
+    val topic: String,
+    val text: String,
+    val answer: String = "",
+    val header: String = "💡 Did you know?"
+)
 
 val FACTS = listOf(
     Fact("🪐 Space", "A day on Venus is longer than its year. It spins so slowly that one turn takes about 243 Earth days, while its trip around the Sun takes about 225."),
@@ -123,7 +134,137 @@ val FACTS = listOf(
     Fact("🧠 Body & mind", "Smell is closely linked to memory, which is why a scent can suddenly bring back a moment from years ago."),
     Fact("🧠 Body & mind", "About 60 percent of the adult human body is water."),
     Fact("🧠 Body & mind", "A few slow, deep breaths can help calm your body when you feel stressed."),
-    Fact("🧠 Body & mind", "Even identical twins have different fingerprints.")
+    Fact("🧠 Body & mind", "Even identical twins have different fingerprints."),
+    Fact("⚽ Messi", "Lionel Messi was born in Rosario, Argentina, on 24 June 1987."),
+    Fact("⚽ Messi", "As a child, Messi needed treatment for a growth hormone problem, and Barcelona offered to pay for it when he was 13."),
+    Fact("⚽ Messi", "Messi's first contract with Barcelona is said to have been written on a paper napkin in the year 2000."),
+    Fact("⚽ Messi", "Messi has won the Ballon d'Or eight times, more than any other player."),
+    Fact("⚽ Messi", "Messi captained Argentina to the 2022 World Cup title in Qatar, beating France on penalties in the final."),
+    Fact("⚽ Messi", "Messi won the Copa America with Argentina in 2021, his first major trophy with the national team."),
+    Fact("⚽ Messi", "Messi left Barcelona in 2021 after about two decades at the club and joined Paris Saint-Germain."),
+    Fact("⚽ Messi", "Messi joined Inter Miami in 2023 and won the Leagues Cup with the club that same year."),
+    Fact("⚽ Ronaldo", "Cristiano Ronaldo was born in Funchal, on the Portuguese island of Madeira, in 1985."),
+    Fact("⚽ Ronaldo", "Ronaldo began his senior career at Sporting CP before joining Manchester United in 2003."),
+    Fact("⚽ Ronaldo", "Ronaldo has won the Champions League five times, once with Manchester United and four times with Real Madrid."),
+    Fact("⚽ Ronaldo", "Ronaldo captained Portugal to victory at Euro 2016, the country's first major international trophy."),
+    Fact("⚽ Ronaldo", "Ronaldo is the all-time top scorer in the history of Real Madrid."),
+    Fact("⚽ Ronaldo", "Ronaldo has won the Ballon d'Or five times."),
+    Fact("⚽ Ronaldo", "Ronaldo is the top scorer in men's international football, with more than 130 goals for Portugal."),
+    Fact("⚽ Ronaldo", "In 2022, Ronaldo became the first man to score in five different World Cups."),
+    Fact("⚽ Neymar", "Neymar's full name is Neymar da Silva Santos Junior, and he was born in Mogi das Cruzes, Brazil, in 1992."),
+    Fact("⚽ Neymar", "Neymar began his professional career at Santos, the club where the great Pele became a legend."),
+    Fact("⚽ Neymar", "Neymar won the Copa Libertadores with Santos in 2011."),
+    Fact("⚽ Neymar", "After joining Barcelona in 2013, Neymar formed a famous attack with Lionel Messi and Luis Suarez, known as MSN."),
+    Fact("⚽ Neymar", "In 2017, Neymar joined Paris Saint-Germain for 222 million euros, a world record transfer fee at the time."),
+    Fact("⚽ Neymar", "Neymar won Olympic gold with Brazil at the 2016 Rio Olympics, scoring the winning penalty in the final shootout."),
+    Fact("⚽ Neymar", "Neymar is Brazil's all-time top scorer, passing the great Pele's record in 2023."),
+    Fact("⚽ Neymar", "Neymar joined the Saudi club Al Hilal in 2023, and in 2025 he returned to his first club, Santos."),
+    Fact("🎥 Hollywood", "The first film to win the top prize at the Oscars, in 1929, was Wings, a silent movie about war pilots."),
+    Fact("🎥 Hollywood", "Titanic won 11 Oscars in 1998, a record it shares with Ben-Hur and The Return of the King."),
+    Fact("🎥 Hollywood", "Jurassic Park, from 1993, brought its dinosaurs to life with a mix of real-size puppets and early computer graphics."),
+    Fact("🎥 Hollywood", "George Lucas kept the merchandising rights to Star Wars, and toys and products later earned him a fortune."),
+    Fact("🎥 Hollywood", "Oppenheimer won seven Oscars in 2024, including Best Picture."),
+    Fact("🎥 Hollywood", "James Cameron directed both Titanic and Avatar, two of the highest-earning films of all time."),
+    Fact("🎥 Hollywood", "The famous Hollywood sign first read Hollywoodland, and it was an advertisement for a housing development."),
+    Fact("🎥 Hollywood", "Walt Disney won more Academy Awards than any other person, with 22 competitive Oscars."),
+    Fact("🧠 GK", "What is the capital of Australia?", "Canberra", "🧠 Quiz time"),
+    Fact("🧠 GK", "Which planet is known as the Red Planet?", "Mars", "🧠 Quiz time"),
+    Fact("🧠 GK", "How many continents are there on Earth?", "Seven", "🧠 Quiz time"),
+    Fact("🧠 GK", "Who wrote the Indian national anthem, Jana Gana Mana?", "Rabindranath Tagore", "🧠 Quiz time"),
+    Fact("🧠 GK", "What is the largest ocean on Earth?", "The Pacific Ocean", "🧠 Quiz time"),
+    Fact("🧠 GK", "Which gas do plants take in from the air for photosynthesis?", "Carbon dioxide", "🧠 Quiz time"),
+    Fact("🧠 GK", "Who painted the Mona Lisa?", "Leonardo da Vinci", "🧠 Quiz time"),
+    Fact("🧠 GK", "What is the national animal of India?", "The tiger", "🧠 Quiz time"),
+    Fact("🧠 GK", "How many players does one football team have on the field?", "Eleven", "🧠 Quiz time"),
+    Fact("🧠 GK", "What is the hardest natural substance on Earth?", "Diamond", "🧠 Quiz time"),
+    Fact("🧠 GK", "Which is the smallest planet in our solar system?", "Mercury", "🧠 Quiz time"),
+    Fact("🧠 GK", "Who was the first person to walk on the Moon?", "Neil Armstrong, in 1969", "🧠 Quiz time"),
+    Fact("🧠 GK", "What is the currency of Japan?", "The yen", "🧠 Quiz time"),
+    Fact("🧠 GK", "Which mountain is the tallest above sea level?", "Mount Everest", "🧠 Quiz time"),
+    Fact("🧠 GK", "What is the chemical formula of water?", "H2O", "🧠 Quiz time"),
+    Fact("🧠 GK", "Who is known as the Father of the Nation in India?", "Mahatma Gandhi", "🧠 Quiz time"),
+    Fact("🧠 GK", "What is the largest mammal in the world?", "The blue whale", "🧠 Quiz time"),
+    Fact("🧠 GK", "How many bones does an adult human body have?", "206", "🧠 Quiz time"),
+    Fact("🧠 GK", "Which country gave the Statue of Liberty to the United States?", "France", "🧠 Quiz time"),
+    Fact("🧠 GK", "What is the largest desert in the world?", "Antarctica", "🧠 Quiz time"),
+    Fact("🫀 Human body", "Your skin is the largest organ of your body."),
+    Fact("🫀 Human body", "The lining of your stomach is replaced every few days, so the acid inside does not harm it."),
+    Fact("🫀 Human body", "Any two people share about 99.9 percent of their DNA."),
+    Fact("🫀 Human body", "The smallest bone in your body is in your ear. It is about 3 millimetres long."),
+    Fact("🫀 Human body", "An adult has about five litres of blood in the body."),
+    Fact("🫀 Human body", "Fingernails grow faster than toenails."),
+    Fact("🫀 Human body", "Your liver can regrow part of itself after it is damaged."),
+    Fact("🫀 Human body", "A baby's kneecaps start out as soft cartilage and turn to bone later in childhood."),
+        Fact("⚽ Messi", "As a boy, Messi was nicknamed La Pulga, which means the Flea, because he was so small."),
+    Fact("⚽ Messi", "Messi won the Golden Ball as the best player of the World Cup twice, in 2014 and in 2022."),
+    Fact("⚽ Messi", "Messi scored twice in the 2022 World Cup final against France, a game that ended 3-3 before Argentina won on penalties."),
+    Fact("⚽ Messi", "In 2012, Messi scored 91 goals in a single calendar year, a world record."),
+    Fact("⚽ Messi", "Messi won an Olympic gold medal with Argentina at the 2008 Beijing Games."),
+    Fact("⚽ Messi", "Messi won the 2005 Under-20 World Cup with Argentina and was named the best player of the tournament."),
+    Fact("⚽ Messi", "Messi wore the numbers 30 and 19 at Barcelona before getting the famous number 10 shirt in 2008."),
+    Fact("⚽ Messi", "By the 2022 World Cup, Messi had played in five different World Cups."),
+    Fact("🔭 Scientists", "Marie Curie is the only person to win Nobel Prizes in two different sciences, Physics in 1903 and Chemistry in 1911."),
+    Fact("🔭 Scientists", "Albert Einstein won the Nobel Prize in Physics in 1921 for explaining the photoelectric effect, not for relativity."),
+    Fact("🔭 Scientists", "Isaac Newton explained gravity and the laws of motion in his book Principia, published in 1687."),
+    Fact("🔭 Scientists", "In 1610, Galileo used a telescope to discover the four biggest moons of Jupiter."),
+    Fact("🔭 Scientists", "Charles Darwin published On the Origin of Species in 1859, explaining evolution by natural selection."),
+    Fact("🔭 Scientists", "C. V. Raman won the Nobel Prize in Physics in 1930 for discovering how light scatters, now called the Raman effect. He was the first Asian to win a Nobel in science."),
+    Fact("🔭 Scientists", "The Indian astronomer Aryabhata, around the year 499, wrote that the Earth spins on its axis. India's first satellite was named after him."),
+    Fact("🔭 Scientists", "Srinivasa Ramanujan, a self-taught Indian mathematician, made amazing discoveries in number theory and worked with G. H. Hardy at Cambridge."),
+    Fact("🔭 Scientists", "A. P. J. Abdul Kalam helped develop India's missile and space launch programmes and later became the President of India."),
+    Fact("🔭 Scientists", "Nikola Tesla's work on alternating current helped make today's electric power grids possible."),
+    Fact("🔭 Scientists", "Alexander Fleming discovered penicillin in 1928 after noticing that mould on a dish had killed the bacteria around it."),
+    Fact("🔭 Scientists", "Louis Pasteur created the process of pasteurisation and helped develop vaccines against rabies and anthrax."),
+    Fact("🔭 Scientists", "Stephen Hawking showed that black holes can slowly give off radiation, now called Hawking radiation, and wrote A Brief History of Time."),
+    Fact("🔭 Scientists", "Jagadish Chandra Bose, an Indian scientist, showed that plants respond to touch and other stimuli, and he did early work on radio waves."),
+    Fact("🔭 Scientists", "Alan Turing helped break the Enigma code in the Second World War and laid the foundations of computer science."),
+    Fact("🔭 Scientists", "Rosalind Franklin's X-ray photograph of DNA, known as Photo 51, helped scientists work out its double helix shape."),
+    Fact("🔭 Scientists", "Dmitri Mendeleev built the periodic table in 1869 and left gaps for elements that had not been discovered yet."),
+    Fact("🔭 Scientists", "Vikram Sarabhai is called the father of India's space programme, and he helped set up ISRO."),
+    Fact("🌡️ Climate", "The oceans have absorbed more than 90 percent of the extra heat trapped by greenhouse gases."),
+    Fact("🌡️ Climate", "The level of carbon dioxide in the air today is higher than at any time in at least 800,000 years."),
+    Fact("🌡️ Climate", "The ozone layer has been slowly recovering since 1987, when the Montreal Protocol banned chemicals that were damaging it."),
+    Fact("🌡️ Climate", "Without the natural greenhouse effect, Earth's average temperature would be around minus 18 degrees Celsius."),
+    Fact("🌡️ Climate", "Ice sheets and glaciers hold about 69 percent of all the fresh water on Earth."),
+    Fact("🌡️ Climate", "Sea levels have risen by about 20 centimetres since the start of the 1900s."),
+    Fact("🌡️ Climate", "The Arctic is warming much faster than the rest of the planet, which is why its sea ice is shrinking."),
+    Fact("🌡️ Climate", "Mangrove forests protect coasts from storms and store large amounts of carbon."),
+    Fact("🌡️ Climate", "Earth's average temperature has risen by more than 1 degree Celsius since the late 1800s."),
+    Fact("🌡️ Climate", "India and France launched the International Solar Alliance in 2015 to help countries use more solar power."),
+    Fact("🌡️ Climate", "Coral reefs cover less than 1 percent of the ocean floor, but about a quarter of all sea creatures depend on them."),
+    Fact("🏝️ Islands", "Greenland is the largest island in the world that is not a continent."),
+    Fact("🏝️ Islands", "Indonesia is made up of more than 17,000 islands."),
+    Fact("🏝️ Islands", "The Andaman and Nicobar Islands, in the Bay of Bengal, are part of India and include more than 500 islands."),
+    Fact("🏝️ Islands", "Lakshadweep, made of coral islands in the Arabian Sea, is the smallest union territory of India."),
+    Fact("🏝️ Islands", "The Maldives is the lowest-lying country in the world. Its highest natural point is only about 2.4 metres above sea level."),
+    Fact("🏝️ Islands", "Majuli, in the Brahmaputra River in Assam, has been recognised as the largest river island in the world."),
+    Fact("🏝️ Islands", "Iceland sits on the Mid-Atlantic Ridge, where two giant plates of the Earth's crust are slowly pulling apart."),
+    Fact("🏝️ Islands", "Measured from its base on the ocean floor, Hawaii's Mauna Kea is taller than Mount Everest."),
+    Fact("🏝️ Islands", "Madagascar is home to many animals found nowhere else on Earth, including lemurs."),
+    Fact("🌊 Oceans", "Oceans cover about 71 percent of the surface of the Earth."),
+    Fact("🌊 Oceans", "The Pacific Ocean holds about half of all the ocean water on the planet."),
+    Fact("🌊 Oceans", "The deepest known spot in the ocean, Challenger Deep in the Mariana Trench, is nearly 11 kilometres down."),
+    Fact("🌊 Oceans", "Most of the ocean floor has still not been mapped in detail."),
+    Fact("🌊 Oceans", "The Indian Ocean is the only ocean named after a country."),
+    Fact("🌊 Oceans", "The Great Barrier Reef, off the coast of Australia, is the largest coral reef system in the world."),
+    Fact("🌊 Oceans", "Tiny ocean plants called phytoplankton produce about half of the oxygen we breathe."),
+    Fact("🌊 Oceans", "Sea water is about 3.5 percent salt on average."),
+    Fact("🌊 Oceans", "The Gulf Stream carries warm water across the Atlantic Ocean and keeps parts of Europe milder than they would otherwise be."),
+    Fact("🌊 Oceans", "Tides are caused mainly by the Moon's gravity pulling on the oceans."),
+    Fact("🌋 Earth", "The tectonic plates that make up Earth's crust move about as fast as your fingernails grow."),
+    Fact("🌋 Earth", "About 75 percent of the world's volcanoes are along the Ring of Fire around the Pacific Ocean."),
+    Fact("🌋 Earth", "Mount Everest is about 8,849 metres tall."),
+    Fact("🌋 Earth", "Scientists still debate whether the Nile or the Amazon is the longest river in the world."),
+    Fact("🌋 Earth", "Antarctica holds about 90 percent of all the ice on Earth."),
+    Fact("🌋 Earth", "Earth is the only planet we know of that has liquid water on its surface."),
+    Fact("🧠 GK", "Which scientist discovered penicillin?", "Alexander Fleming", "🧠 Quiz time"),
+    Fact("🧠 GK", "Who developed the theory of general relativity?", "Albert Einstein", "🧠 Quiz time"),
+    Fact("🧠 GK", "Which Indian scientist won the Nobel Prize in Physics in 1930?", "C. V. Raman", "🧠 Quiz time"),
+    Fact("🧠 GK", "What is the deepest known part of the world's oceans?", "Challenger Deep in the Mariana Trench", "🧠 Quiz time"),
+    Fact("🧠 GK", "What is the largest island in the world that is not a continent?", "Greenland", "🧠 Quiz time"),
+    Fact("🧠 GK", "Which gas released by burning fuels is the main driver of climate change?", "Carbon dioxide", "🧠 Quiz time"),
+    
+    
 )
 
 fun nextFact(current: Int): Int {
@@ -134,21 +275,54 @@ fun nextFact(current: Int): Int {
 
 @Composable
 fun FactCard(fact: Fact, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    var revealed by remember(fact) { mutableStateOf(false) }
+    val isQuiz = fact.answer.isNotEmpty()
+    val tappable = onClick != null || isQuiz
+
+    LaunchedEffect(fact) {
+        if (isQuiz && onClick == null) {
+            delay(6000)
+            revealed = true
+        }
+    }
+
     Column(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFF2A2266))
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .then(
+                if (tappable) Modifier.clickable {
+                    if (isQuiz && !revealed) {
+                        revealed = true
+                    } else {
+                        onClick?.invoke()
+                    }
+                } else Modifier
+            )
             .padding(20.dp)
     ) {
         Text(
-            "💡 Did you know?  ·  " + fact.topic,
+            fact.header + "  ·  " + fact.topic,
             color = Color(0xFF7ED957), fontSize = 13.sp, fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(10.dp))
         Text(fact.text, color = Color.White, fontSize = 16.sp, lineHeight = 23.sp)
-        if (onClick != null) {
+        if (isQuiz) {
+            Spacer(Modifier.height(12.dp))
+            if (revealed) {
+                Text(
+                    "✅ " + fact.answer,
+                    color = Color(0xFF7ED957), fontSize = 17.sp, fontWeight = FontWeight.Bold
+                )
+                if (onClick != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Tap for another one", color = Color(0xFFB9B2F5), fontSize = 12.sp)
+                }
+            } else {
+                Text("Tap to reveal the answer", color = Color(0xFFB9B2F5), fontSize = 12.sp)
+            }
+        } else if (onClick != null) {
             Spacer(Modifier.height(10.dp))
             Text("Tap for another fact", color = Color(0xFFB9B2F5), fontSize = 12.sp)
         }
