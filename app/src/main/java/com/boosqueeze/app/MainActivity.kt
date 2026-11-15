@@ -1,13 +1,12 @@
 package com.boosqueeze.app
 
-import android.net.Uri
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,12 +19,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,7 +62,7 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-                enableEdgeToEdge(
+        enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
@@ -91,6 +90,9 @@ fun BooSqueezeApp() {
     var savedWhere by remember { mutableStateOf("") }
     var transformer by remember { mutableStateOf<Transformer?>(null) }
     var startTime by remember { mutableStateOf(0L) }
+    var totalSaved by remember { mutableStateOf(getTotalSaved(context)) }
+    var totalCount by remember { mutableStateOf(getTotalCount(context)) }
+    var factIndex by remember { mutableStateOf(FACTS.indices.random()) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { picked ->
         if (picked != null) {
@@ -112,6 +114,13 @@ fun BooSqueezeApp() {
             }
             elapsed = (System.currentTimeMillis() - startTime) / 1000
             delay(300)
+        }
+    }
+
+    LaunchedEffect(state) {
+        while (state == "working") {
+            delay(12000)
+            if (state == "working") factIndex = nextFact(factIndex)
         }
     }
 
@@ -160,6 +169,11 @@ fun BooSqueezeApp() {
                             savedWhere = where
                             errorMsg = err
                             state = if (err.isEmpty()) "done" else "error"
+                            if (err.isEmpty()) {
+                                addStats(context, inf.sizeBytes - size)
+                                totalSaved = getTotalSaved(context)
+                                totalCount = getTotalCount(context)
+                            }
                             activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                         }
                     }.start()
@@ -200,7 +214,13 @@ fun BooSqueezeApp() {
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0xFF2B1E8C), Color(0xFF1B1540))))
-                        .systemBarsPadding()
+            .systemBarsPadding(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -234,6 +254,15 @@ fun BooSqueezeApp() {
                     color = soft, fontSize = 13.sp, textAlign = TextAlign.Center
                 )
             }
+            Spacer(Modifier.height(16.dp))
+            FactCard(FACTS[factIndex]) { factIndex = nextFact(factIndex) }
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "🧃 Space saved so far: " + fmt(totalSaved) +
+                    (if (totalCount > 0) "  •  " + totalCount + " videos" else ""),
+                color = mint, fontSize = 14.sp, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         info?.let { i ->
@@ -298,12 +327,7 @@ fun BooSqueezeApp() {
                         color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(12.dp))
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
-                        color = mint,
-                        trackColor = Color(0xFF4A3FA8)
-                    )
+                    GhostProgress(progress)
                     Spacer(Modifier.height(10.dp))
                     val eta = if (progress > 0.05f) (elapsed / progress - elapsed).toLong() else -1L
                     Text(
@@ -312,6 +336,8 @@ fun BooSqueezeApp() {
                         color = soft, fontSize = 14.sp
                     )
                 }
+                Spacer(Modifier.height(14.dp))
+                FactCard(FACTS[factIndex])
                 Spacer(Modifier.height(12.dp))
                 OutlinedButton(onClick = {
                     transformer?.cancel()
@@ -348,7 +374,7 @@ fun BooSqueezeApp() {
                         color = soft, fontSize = 14.sp
                     )
                     Text("Saved in: " + savedWhere, color = soft, fontSize = 13.sp)
-                                        Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(14.dp))
                     Button(
                         onClick = {
                             val u = lastSavedUri
@@ -374,6 +400,12 @@ fun BooSqueezeApp() {
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(card).padding(16.dp)
             )
         }
-        Spacer(Modifier.height(30.dp))
+        Spacer(Modifier.height(20.dp))
+    }
+    Text(
+        "Made With ❤️ From India",
+        color = soft, fontSize = 13.sp,
+        modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
+    )
     }
 }
