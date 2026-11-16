@@ -480,3 +480,4 @@ fun BooSqueezeApp() {
             VideoPlayerDialog(pu) { showPlayer = false }
         }
     }
+}    
