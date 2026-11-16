@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -38,6 +39,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,7 +58,9 @@ import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 
@@ -93,6 +98,8 @@ fun BooSqueezeApp() {
     var totalSaved by remember { mutableStateOf(getTotalSaved(context)) }
     var totalCount by remember { mutableStateOf(getTotalCount(context)) }
     var factIndex by remember { mutableStateOf(FACTS.indices.random()) }
+    var thumb by remember { mutableStateOf<ImageBitmap?>(null) }
+    var showPlayer by remember { mutableStateOf(false) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { picked ->
         if (picked != null) {
@@ -100,6 +107,14 @@ fun BooSqueezeApp() {
             info = readInfo(context, picked)
             state = "idle"
             errorMsg = ""
+        }
+    }
+
+    LaunchedEffect(uri) {
+        thumb = null
+        val u = uri
+        if (u != null) {
+            thumb = withContext(Dispatchers.IO) { loadThumbnail(context, u)?.asImageBitmap() }
         }
     }
 
@@ -267,16 +282,26 @@ fun BooSqueezeApp() {
 
         info?.let { i ->
             Spacer(Modifier.height(16.dp))
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(card).padding(16.dp)
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(card).padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(i.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                Spacer(Modifier.height(6.dp))
-                val dims = if (i.width > 0) "   •   " + i.width + "×" + i.height else ""
-                Text(
-                    "Original: " + fmt(i.sizeBytes) + "   •   " + fmtTime(i.durationMs / 1000) + dims,
-                    color = soft, fontSize = 14.sp
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(i.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Original: " + fmt(i.sizeBytes) + "  •  " + fmtTime(i.durationMs / 1000),
+                        color = soft, fontSize = 14.sp
+                    )
+                    if (i.width > 0) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(i.width.toString() + "×" + i.height, color = soft, fontSize = 14.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Tap the picture to play it", color = soft, fontSize = 12.sp)
+                }
+                Spacer(Modifier.width(12.dp))
+                VideoThumb(thumb) { showPlayer = true }
             }
 
             SectionTitle("Where are you sharing it?")
@@ -407,5 +432,12 @@ fun BooSqueezeApp() {
         color = soft, fontSize = 13.sp,
         modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
     )
+    }
+
+    if (showPlayer) {
+        val pu = uri
+        if (pu != null) {
+            VideoPlayerDialog(pu) { showPlayer = false }
+        }
     }
 }
