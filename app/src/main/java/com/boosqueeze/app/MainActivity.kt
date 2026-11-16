@@ -1,6 +1,7 @@
 package com.boosqueeze.app
 
 import android.content.Intent
+import android.media.MediaCodecInfo
 import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
@@ -100,6 +101,7 @@ fun BooSqueezeApp() {
     var factIndex by remember { mutableStateOf(FACTS.indices.random()) }
     var thumb by remember { mutableStateOf<ImageBitmap?>(null) }
     var showPlayer by remember { mutableStateOf(false) }
+    var forceCbr by remember { mutableStateOf(false) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { picked ->
         if (picked != null) {
@@ -107,6 +109,7 @@ fun BooSqueezeApp() {
             info = readInfo(context, picked)
             state = "idle"
             errorMsg = ""
+            forceCbr = false
         }
     }
 
@@ -154,10 +157,13 @@ fun BooSqueezeApp() {
         val outName = baseName + ".mp4"
         val outFile = File(context.cacheDir, "boo_" + System.currentTimeMillis() + ".mp4")
 
+        val useCbr = preset == Preset.WHATSAPP_CHAT || forceCbr
+        val settings = VideoEncoderSettings.Builder().setBitrate(plan.bitrate)
+        if (useCbr) {
+            settings.setBitrateMode(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+        }
         val encoderFactory = DefaultEncoderFactory.Builder(context)
-            .setRequestedVideoEncoderSettings(
-                VideoEncoderSettings.Builder().setBitrate(plan.bitrate).build()
-            )
+            .setRequestedVideoEncoderSettings(settings.build())
             .build()
 
         val t = Transformer.Builder(context)
@@ -171,10 +177,13 @@ fun BooSqueezeApp() {
                         var err = ""
                         var where = ""
                         val size = outFile.length()
-                        try {
-                            where = saveToGallery(context, outFile, outName)
-                        } catch (e: Exception) {
-                            err = "Could not save: " + e.message
+                        val tooBig = inf.sizeBytes > 0 && size >= inf.sizeBytes * 0.95
+                        if (!tooBig) {
+                            try {
+                                where = saveToGallery(context, outFile, outName)
+                            } catch (e: Exception) {
+                                err = "Could not save: " + e.message
+                            }
                         }
                         outFile.delete()
                         val secs = (System.currentTimeMillis() - startTime) / 1000
@@ -183,8 +192,8 @@ fun BooSqueezeApp() {
                             tookSecs = secs
                             savedWhere = where
                             errorMsg = err
-                            state = if (err.isEmpty()) "done" else "error"
-                            if (err.isEmpty()) {
+                            state = if (tooBig) "skipped" else if (err.isEmpty()) "done" else "error"
+                            if (!tooBig && err.isEmpty()) {
                                 addStats(context, inf.sizeBytes - size)
                                 totalSaved = getTotalSaved(context)
                                 totalCount = getTotalCount(context)
@@ -306,8 +315,9 @@ fun BooSqueezeApp() {
 
             SectionTitle("Where are you sharing it?")
             Preset.values().forEach { p ->
+                val pl = planFor(i, p, quality, codec)
                 val estText = if (p == Preset.CUSTOM) "" else
-                    "~" + fmt(estimateBytes(i, planFor(i, p, quality, codec)))
+                    if (isAlreadySmall(i, pl, p)) "little to save" else "~" + fmt(estimateBytes(i, pl))
                 PresetCard(p, estText, p == preset, !busy) { preset = p }
                 Spacer(Modifier.height(10.dp))
             }
@@ -333,6 +343,8 @@ fun BooSqueezeApp() {
             val note = when {
                 preset == Preset.WHATSAPP_CHAT && plan.bitrate < 1_000_000 ->
                     "Long video: quality may drop to fit 16 MB. Trimming it first gives a sharper result."
+                isAlreadySmall(i, plan, preset) ->
+                    "Already well compressed, so there may be little to save. If the result is not smaller, I will not save it."
                 i.sizeBytes > 0 && est >= i.sizeBytes ->
                     "This video is already small, so there's little to save."
                 else -> "Estimated result: about " + fmt(est)
@@ -378,6 +390,34 @@ fun BooSqueezeApp() {
                     shape = RoundedCornerShape(18.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = mint)
                 ) { Text("🧃  Squeeze it!", fontSize = 19.sp, color = Color(0xFF1B1540), fontWeight = FontWeight.Bold) }
+            }
+
+            if (state == "skipped") {
+                Spacer(Modifier.height(18.dp))
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(card).padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("👍 Already well compressed", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "The squeezed version (" + fmt(outBytes) + ") was not smaller than your original (" +
+                            fmt(i.sizeBytes) + "), so I did not save it. Your original is untouched.",
+                        color = soft, fontSize = 14.sp, textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Button(
+                        onClick = {
+                            preset = Preset.CUSTOM
+                            codec = Codec.SMALL
+                            quality = Quality.SMALL
+                            forceCbr = true
+                            state = "idle"
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C6CFF))
+                    ) { Text("Try smaller (lower quality)", color = Color.White, fontSize = 15.sp) }
+                }
             }
 
             if (state == "done") {
@@ -440,4 +480,3 @@ fun BooSqueezeApp() {
             VideoPlayerDialog(pu) { showPlayer = false }
         }
     }
-}
